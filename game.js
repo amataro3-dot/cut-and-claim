@@ -38,9 +38,10 @@ function home() {
     <div class="lbl">${T('遊び方')}</div>
     <div>① ${T('△は、線の上を自動で進む')}</div>
     <div>② ${T('A を押すと、枠の中へ進んでいく。矢印で向きを変える')}</div>
-    <div>③ ${T('線に戻ってこられたら、囲んだ小さいほうが自分の陣地になる')}</div>
-    <div>④ ${T('中を進んでいる線を人にさわられたら、やられる(自分の線にぶつかっても)。5秒で復活')}</div>
-    <div>⑤ ${T('陣地が50%をこえるか、3分たって陣地がいちばん広い人の勝ち')}</div>
+    <div>③ ${T('線に戻ってこられたら、囲んだうち敵がいないほうが自分の陣地になる(どちらにもいなければ小さいほう)')}</div>
+    <div>④ ${T('中を進んでいる線を、人や敵にさわられたら、やられる(自分の線にぶつかっても)。5秒で復活')}</div>
+    <div>⑤ ${T('線の上にいるときは安全')}</div>
+    <div>⑥ ${T('陣地が50%をこえるか、3分たって陣地がいちばん広い人の勝ち')}</div>
   </div>
   <button id="solo" class="wide">${T('ひとりで練習(CPU対戦)')}</button>
   ${window.NO_ONLINE ? `<button class="wide sub" disabled>${T('オンライン対戦は muddys-games.com で遊べます')}</button>` : `<button id="online" class="wide">${T('オンライン対戦(8人まで)')}</button>`}
@@ -146,7 +147,7 @@ function events() {
   for (const e of G.events) {
     if (e.t === 'die') {
       boom(e.x, e.y, COLORS[e.p]);
-      if (e.p === ME) toast(e.by >= 0 ? T('{name} にやられた', { name: esc(NAMES[e.by]) }) : T('やられた'));
+      if (e.p === ME) toast(e.by >= 0 ? T('{name} にやられた', { name: esc(NAMES[e.by]) }) : e.by === -2 ? T('敵にやられた') : T('やられた'));
       else if (e.by === ME) toast(T('{name} をたおした！', { name: esc(NAMES[e.p]) }));
     }
     if (e.t === 'claim') { const P = G.players[e.p]; flash.push({ p: e.p, t: 0.5, x: P.x, y: P.y, n: G.area[e.p] }); }
@@ -218,9 +219,24 @@ function draw(dt) {
     if (P.mode === 'dead') continue;
     const x = (P.x + 0.5) * CS, y = (P.y + 0.5) * CS, s = CS * (P.i === ME ? 2.3 : 1.9), a = P.dir * Math.PI / 2;
     cx.save(); cx.translate(x, y); cx.rotate(a);
+    // 中は塗らずに、線だけの△(自分は太く、内側に白い線)
     cx.beginPath(); cx.moveTo(0, -s); cx.lineTo(s * 0.8, s * 0.7); cx.lineTo(-s * 0.8, s * 0.7); cx.closePath();
-    cx.fillStyle = COLORS[P.i]; cx.shadowColor = COLORS[P.i]; cx.shadowBlur = 12; cx.fill(); cx.shadowBlur = 0;
-    cx.lineWidth = P.i === ME ? 2.5 : 1; cx.strokeStyle = P.i === ME ? '#fff' : 'rgba(255,255,255,.5)'; cx.stroke();
+    cx.strokeStyle = COLORS[P.i]; cx.shadowColor = COLORS[P.i]; cx.shadowBlur = P.i === ME ? 16 : 10;
+    cx.lineWidth = P.i === ME ? 3.2 : 2.2; cx.stroke(); cx.shadowBlur = 0;
+    if (P.i === ME) { cx.lineWidth = 1.2; cx.strokeStyle = '#fff'; cx.stroke(); }
+    cx.restore();
+  }
+  // 中の敵(本家の「クイックス」): 回りながらのびちぢみする光る線のたば
+  const tm = performance.now() / 1000;
+  for (const [k, E] of G.enemies.entries()) {
+    const ex = E.x / CC.U * CS, ey = E.y / CC.U * CS;
+    cx.save(); cx.globalCompositeOperation = 'lighter'; cx.lineCap = 'round';
+    for (let j = 0; j < 6; j++) {
+      const a = tm * (1.7 + j * 0.23) + j * 1.05 + k * 2, len = CS * (1.6 + 1.1 * Math.sin(tm * 2.3 + j * 1.7));
+      const ox = Math.cos(tm * 1.3 + j * 2.1) * CS * 0.8, oy = Math.sin(tm * 1.1 + j * 1.3) * CS * 0.8;
+      cx.strokeStyle = j % 2 ? '#ff4dff' : '#fff27a'; cx.shadowColor = cx.strokeStyle; cx.shadowBlur = 10; cx.lineWidth = 2;
+      cx.beginPath(); cx.moveTo(ex + ox - Math.cos(a) * len, ey + oy - Math.sin(a) * len); cx.lineTo(ex + ox + Math.cos(a) * len, ey + oy + Math.sin(a) * len); cx.stroke();
+    }
     cx.restore();
   }
   // やられたときの火花

@@ -2,7 +2,7 @@
 // 使い方: node tests/sim-test.js [試合数]
 const CC = require('../sim.js');
 const games = +(process.argv[2] || 60);
-let ends = { rate: 0, time: 0, full: 0 }, stuck = 0, bad = 0, totalKills = 0, claims = 0, lens = [];
+let ends = { rate: 0, time: 0, full: 0 }, stuck = 0, bad = 0, totalKills = 0, claims = 0, lens = [], byEnemy = 0;
 for (let g = 0; g < games; g++) {
   const n = 2 + (g % 7), lv = ['easy', 'normal', 'hard'][g % 3];
   const slots = Array.from({ length: n }, () => ({ cpu: lv }));
@@ -10,7 +10,9 @@ for (let g = 0; g < games; g++) {
   const last = G.players.map(P => P.x + ',' + P.y); let still = G.players.map(() => 0);
   while (!G.over) {
     CC.step(G);
-    for (const e of G.events) if (e.t === 'claim') claims++;
+    for (const e of G.events) { if (e.t === 'claim') claims++; if (e.t === 'die' && e.by === -2) byEnemy++; }
+    // 敵はいつも空きマスの中にいるはず
+    for (const E of G.enemies) if (G.own[CC.idx(E.x / CC.U | 0, E.y / CC.U | 0)] !== 0 && !G.over) { bad++; if (bad < 5) console.log('敵が空きの外', g, G.tick); }
     if (G.tick % CC.MOVE_EVERY === 0 && !G.over) G.players.forEach((P, k) => {
       const s = P.x + ',' + P.y;
       if (P.mode !== 'dead' && s === last[k]) { still[k]++; if (still[k] === 40) { stuck++; console.log('止まった?', g, k, P.mode, s); } } else still[k] = 0;
@@ -30,5 +32,5 @@ for (let g = 0; g < games; g++) {
   }
 }
 lens.sort((a, b) => a - b);
-console.log({ games, ends, stuck, bad, totalKills, claims, medianSec: lens[lens.length >> 1].toFixed(0), minSec: lens[0].toFixed(0) });
+console.log({ games, ends, stuck, bad, totalKills, byEnemy, claims, medianSec: lens[lens.length >> 1].toFixed(0), minSec: lens[0].toFixed(0) });
 process.exit(stuck || bad ? 1 : 0);
