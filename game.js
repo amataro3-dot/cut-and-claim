@@ -174,25 +174,55 @@ const SPK = [];   // アスタンの火花(画面だけ)
 function boom(x, y, col) { for (let k = 0; k < 14; k++) { const a = Math.random() * 7, s = 4 + Math.random() * 10; FX.push({ x: x + 0.5, y: y + 0.5, vx: Math.cos(a) * s, vy: Math.sin(a) * s, t: 0.6, col }); } }
 let terrVer = -1, fillC = null, edgeC = null;
 function hexA(h, a) { const n = parseInt(h.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; }
-/* 陣地の絵(1マス = 1点の小さい絵)を、変わったときだけ作り直す */
+/* 陣地の絵を、変わったときだけ作り直す。
+   中のぬり = 1マス 1点の小さい絵。ふちの線 = 画面と同じ細かさの絵に、マスの真ん中を通る細い光の線(スタイリッシュに) */
 function buildTerritory() {
   const MW = CC.W, MH = CC.H;
-  if (!fillC) { fillC = document.createElement('canvas'); edgeC = document.createElement('canvas'); fillC.width = edgeC.width = MW; fillC.height = edgeC.height = MH; }
+  if (!fillC) { fillC = document.createElement('canvas'); edgeC = document.createElement('canvas'); fillC.width = MW; fillC.height = MH; }
+  const ew = Math.round(BW * DPR), eh = Math.round(BH * DPR);
+  if (edgeC.width !== ew || edgeC.height !== eh) { edgeC.width = ew; edgeC.height = eh; }
   const f = fillC.getContext('2d'), e = edgeC.getContext('2d');
-  const fi = f.createImageData(MW, MH), ei = e.createImageData(MW, MH);
+  const fi = f.createImageData(MW, MH);
   const rgb = COLORS.map(h => { const n = parseInt(h.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; });
   for (let i = 0; i < MW * MH; i++) {
     const o = G.own[i], k = i * 4;
     if (o > 0) {
       const c = rgb[o - 1];
       fi.data[k] = c[0] * 0.28 + 7; fi.data[k + 1] = c[1] * 0.28 + 10; fi.data[k + 2] = c[2] * 0.28 + 22; fi.data[k + 3] = 255;
-      if (G.line[i]) { ei.data[k] = c[0]; ei.data[k + 1] = c[1]; ei.data[k + 2] = c[2]; ei.data[k + 3] = 255; }
     } else if (o === -1) {
       fi.data[k] = 20; fi.data[k + 1] = 30; fi.data[k + 2] = 52; fi.data[k + 3] = 255;
-      if (G.line[i]) { ei.data[k] = 150; ei.data[k + 1] = 215; ei.data[k + 2] = 255; ei.data[k + 3] = 200; }
     }
   }
-  f.putImageData(fi, 0, 0); e.putImageData(ei, 0, 0);
+  f.putImageData(fi, 0, 0);
+  // ふちの線: 持ち主ごとに、となりの線のマスと真ん中どうしをつなぐ
+  const paths = {};
+  const at = i => paths[G.own[i]] || (paths[G.own[i]] = new Path2D());
+  const cxy = i => [((i % MW) + 0.5) * CS, (((i / MW) | 0) + 0.5) * CS];
+  for (let i = 0; i < MW * MH; i++) {
+    if (!G.line[i]) continue;
+    const o = G.own[i], x = i % MW, y = (i / MW) | 0, [ax, ay] = cxy(i);
+    let n = 0;
+    for (const [dx, dy] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) {
+      const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= MW || yy >= MH) continue;
+      const j = yy * MW + xx; if (!G.line[j] || G.own[j] !== o) continue;
+      n++; if (dx < 0 || dy < 0) continue;   // 同じ線を2回描かない
+      // 空いている所に面している線だけ描く(はば2マスの陣地が、はしごのように見えないように)
+      const fr0 = (px, py) => px >= 0 && py >= 0 && px < MW && py < MH && G.own[py * MW + px] === 0;
+      const face = dx ? fr0(x, y - 1) || fr0(xx, y - 1) || fr0(x, y + 1) || fr0(xx, y + 1) : fr0(x - 1, y) || fr0(x - 1, yy) || fr0(x + 1, y) || fr0(x + 1, yy);
+      if (!face) continue;
+      const [bx, by] = cxy(j), p = at(i); p.moveTo(ax, ay); p.lineTo(bx, by);
+    }
+    if (!n) { const p = at(i); p.moveTo(ax - CS * 0.3, ay); p.lineTo(ax + CS * 0.3, ay); }   // ひとつだけの点
+  }
+  e.setTransform(1, 0, 0, 1, 0, 0); e.clearRect(0, 0, ew, eh); e.setTransform(DPR, 0, 0, DPR, 0, 0);
+  e.lineCap = 'round'; e.lineJoin = 'round';
+  for (const k in paths) {
+    const col = +k === -1 ? '#96d7ff' : COLORS[+k - 1];
+    e.strokeStyle = col; e.shadowColor = col;
+    e.globalAlpha = 0.55; e.shadowBlur = CS * 1.6; e.lineWidth = Math.max(1.5, CS * 0.42); e.stroke(paths[k]);   // 光
+    e.globalAlpha = 1; e.shadowBlur = CS * 0.5; e.lineWidth = Math.max(1, CS * 0.26); e.stroke(paths[k]);        // 芯
+  }
+  e.shadowBlur = 0;
   terrVer = G.ver;
 }
 function draw(dt) {
@@ -224,9 +254,7 @@ function draw(dt) {
   }
   for (let k = flash.length - 1; k >= 0; k--) if (flash[k].t <= 0) flash.splice(k, 1);
   // 線(ふち)を光らせる
-  cx.drawImage(edgeC, 0, 0, BW, BH);
-  cx.save(); cx.globalCompositeOperation = 'lighter'; cx.filter = `blur(${Math.max(2, CS * 0.7)}px)`; cx.globalAlpha = 0.9;
-  cx.imageSmoothingEnabled = true; cx.drawImage(edgeC, 0, 0, BW, BH); cx.restore();
+  cx.imageSmoothingEnabled = true; cx.drawImage(edgeC, 0, 0, BW, BH);
   // 中を進んでいる線
   cx.lineCap = 'round'; cx.lineJoin = 'round';
   for (const P of G.players) {
