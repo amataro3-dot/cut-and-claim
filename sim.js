@@ -11,10 +11,10 @@
   'use strict';
   const N = 60;                    // マス目の大きさ(外の枠をふくむ)
   const TICK = 1 / 30;             // 1コマの時間(1秒に30コマ)
-  const MOVE_EVERY = 4;            // 4コマで1マス進む(1秒に7.5マス)
+  const MOVE_EVERY = 6;            // 6コマで1マス進む(1秒に5マス)
   const RESPAWN = 150;             // やられてから復活まで(5秒)
   const TIME_LIMIT = 180 * 30;     // 3分
-  const WIN_RATE = 0.5;            // 陣地がこれをこえたら勝ち
+  const winRate = n => (n <= 3 ? 0.5 : n <= 5 ? 0.35 : 0.25);   // 陣地がこれをこえたら勝ち(人数で変わる)
   const GO_WAIT = 8;               // A を押してから、中に入れる場所を待つ歩数
   const MAX_PLAYERS = 8;
   const DX = [0, 1, 0, -1], DY = [-1, 0, 1, 0];   // 向き: 0 上、1 右、2 下、3 左
@@ -24,7 +24,7 @@
   const U = 64;                    // 1マスの細かさ
   const ENEMY_R2 = 5;              // 敵のまわりのこの範囲(マスの距離の2乗)の線にさわったら、やられる
   const ENEMY_TURN = [20, 70];     // 向きを変えるまでのコマ
-  const ENEMY_VEL = [[13, 0], [12, 5], [9, 9], [5, 12], [0, 13], [-5, 12], [-9, 9], [-12, 5], [-13, 0], [-12, -5], [-9, -9], [-5, -12], [0, -13], [5, -12], [9, -9], [12, -5]];   // 1コマで約0.2マス
+  const ENEMY_VEL = [[9, 0], [8, 3], [6, 6], [3, 8], [0, 9], [-3, 8], [-6, 6], [-8, 3], [-9, 0], [-8, -3], [-6, -6], [-3, -8], [0, -9], [3, -8], [6, -6], [8, -3]];   // 1コマで約0.135マス(1秒に約4マス)
   const enemyCount = n => (n >= 5 ? 2 : 1);   // 5人以上なら2体
 
   /* CPU の強さ: a = 中へ進む深さ、b = 横の長さ、cool = 次に入るまでのコマ、
@@ -49,7 +49,7 @@
   /* 新しい試合。slots = [{ cpu: null | 'easy' | 'normal' | 'hard' }, ...](2〜8人)。limit はテスト用(試合の長さのコマ数) */
   function newGame(seed, slots, limit) {
     const G = {
-      n: N, tick: 0, limit: limit || TIME_LIMIT, rng: makeRng(seed), over: null, ver: 0,
+      n: N, tick: 0, limit: limit || TIME_LIMIT, winRate: winRate(slots.length), rng: makeRng(seed), over: null, ver: 0,
       own: new Int8Array(N * N), trail: new Int8Array(N * N), line: new Uint8Array(N * N),
       dist: new Int16Array(N * N), area: [], players: [], events: [], enemies: [],
     };
@@ -323,7 +323,7 @@
     // 勝ち負け
     const free = INNER - G.area.reduce((s, v) => s + v, 0);
     const top = Math.max(...G.area);
-    if (top / INNER > WIN_RATE) G.over = { reason: 'rate', win: G.area.map((v, k) => v === top ? k : -1).filter(k => k >= 0) };
+    if (top / INNER > G.winRate) G.over = { reason: 'rate', win: G.area.map((v, k) => v === top ? k : -1).filter(k => k >= 0) };
     else if (G.tick >= G.limit || free <= 0) G.over = { reason: G.tick >= G.limit ? 'time' : 'full', win: G.area.map((v, k) => v === top ? k : -1).filter(k => k >= 0) };
   }
 
@@ -386,7 +386,7 @@
     return [G.tick, h >>> 0, G.players.map(P => P.x + '.' + P.y + P.mode[0]).join('/'), G.enemies.map(E => E.x + '.' + E.y).join('/')].join(',');
   }
 
-  const API = { N, U, TICK, MOVE_EVERY, RESPAWN, TIME_LIMIT, WIN_RATE, INNER, MAX_PLAYERS, CPU, DX, DY, makeRng, newGame, step, command, sig, idx };
+  const API = { N, U, TICK, MOVE_EVERY, RESPAWN, TIME_LIMIT, winRate, INNER, MAX_PLAYERS, CPU, DX, DY, makeRng, newGame, step, command, sig, idx };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   else root.CC = API;
 })(typeof window !== 'undefined' ? window : this);
