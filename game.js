@@ -47,7 +47,6 @@ function home() {
   </div>
   <button id="solo" class="wide">${T('ひとりで練習(CPU対戦)')}</button>
   ${window.NO_ONLINE ? `<button class="wide sub" disabled>${T('オンライン対戦は muddys-games.com で遊べます')}</button>` : `<button id="online" class="wide">${T('オンライン対戦(8人まで)')}</button>`}
-  <div class="dim small">${T('試作版です。遊びながら調整します')}</div>
   ${FOOT()}`;
   langSwitchInit(() => { });
   $('solo').onclick = solo;

@@ -4,7 +4,7 @@
 **ルールは `muddys-notes` の `cut-and-claim/cut-and-claim_spec.md`(仕様メモ)が基準。** 進め方の約束は `muddys-notes` の `CLAUDE.md`。
 
 - 公開URL(予定): https://muddys-games.com/cut-and-claim/ (GitHub Pages、main ブランチ、ルート)
-- 作りかけのうちは、サイトのトップに載せない(`index.html` に noindex)
+- **完成(v=6、2026-11-03)**。サイトのトップ(日本語・英語・韓国語)にカードと遊び方ページ(`/howto-cut-and-claim.html` ほか)がある。noindex は消した
 
 ## ファイル
 | ファイル | 中身 |
