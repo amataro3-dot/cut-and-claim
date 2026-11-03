@@ -44,7 +44,7 @@ button.mini{padding:7px 11px;font-size:13px}
 .rank span{display:flex;align-items:center;gap:3px}
 .rank span.me{color:var(--tx);font-weight:800}
 .board{position:relative;display:flex;justify-content:center}
-#cv{display:block;border-radius:6px;box-shadow:0 0 18px rgba(59,232,255,.18)}
+#cv{display:block}
 .intro{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:90px;font-weight:900;color:#fff;text-shadow:0 0 18px var(--ac);pointer-events:none}
 #toasts{position:absolute;left:0;right:0;top:8px;pointer-events:none}
 .toast{display:inline-block;background:rgba(6,9,20,.85);border:1px solid var(--bd);border-radius:10px;padding:5px 12px;margin:2px;font-size:14px}

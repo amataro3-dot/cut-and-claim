@@ -38,11 +38,12 @@ function home() {
     <div class="lbl">${T('遊び方')}</div>
     <div>① ${T('△は、線の上を自動で進む')}</div>
     <div>② ${T('線の上で、空いている側の矢印を押すと、枠の中へ進んでいく。中でも矢印で向きを変える')}</div>
-    <div>③ ${T('線に戻ってこられたら、囲んだうち敵がいないほうが自分の陣地になる(どちらにもいなければ小さいほう)')}</div>
-    <div>④ ${T('中を進んでいる線を、人や敵にさわられたら、やられる(自分の線にぶつかっても)。5秒で復活')}</div>
-    <div>⑤ ${T('線の上にいるときは安全')}</div>
-    <div>⑥ ${T('A を押しているあいだ、ダッシュ(2倍の速さ)。ゲージは線の上でたまる')}</div>
-    <div>⑦ ${T('陣地が目標をこえるか、3分たって陣地がいちばん広い人の勝ち。目標は 2〜3人で50%、4〜8人で35%')}</div>
+    <div>③ ${T('中では、人の陣地の中にも線を引ける。外の枠か自分の陣地に戻ってきたら、囲んだうちダイヤンがいないほうが自分の陣地になる(人の陣地もふくむ。どちらにもいなければ小さいほう)')}</div>
+    <div>④ ${T('中を進んでいる線を、人にさわられたらやられる(自分の線にぶつかっても)。空いている所ではダイヤンにさわられてもやられる。5秒で復活')}</div>
+    <div>⑤ ${T('線の上はアスタンが走っている。さわるとやられる。中へ入ると、線をたどって追いかけてくる')}</div>
+    <div>⑥ ${T('囲まれた所の線の上にいた人も、やられる')}</div>
+    <div>⑦ ${T('A を押しているあいだ、ダッシュ(2倍の速さ)。ゲージは線の上でたまる')}</div>
+    <div>⑧ ${T('陣地が目標をこえるか、3分たって陣地がいちばん広い人の勝ち。目標は 2〜3人で50%、4〜5人で35%、6〜8人で30%')}</div>
   </div>
   <button id="solo" class="wide">${T('ひとりで練習(CPU対戦)')}</button>
   ${window.NO_ONLINE ? `<button class="wide sub" disabled>${T('オンライン対戦は muddys-games.com で遊べます')}</button>` : `<button id="online" class="wide">${T('オンライン対戦(8人まで)')}</button>`}
@@ -81,7 +82,7 @@ function play(opt) {
   stopLoop();
   G = CC.newGame(opt.seed, opt.slots, opt.limit);
   ME = opt.me; NAMES = opt.names; online = !!opt.online;
-  intro = 2.2; acc = 0; held = false; toasts = []; FX.length = 0; terrVer = -1;
+  intro = 2.2; acc = 0; held = false; toasts = []; FX.length = 0; SPK.length = 0; terrVer = -1;
   guard('game', online ? netLeaveToEntry : () => solo());
   app.innerHTML = `
   <div class="hud"><span id="ht">3:00</span><span id="hp" class="me"></span><button id="quit" class="sub mini">✕</button></div>
@@ -123,18 +124,19 @@ window.addEventListener('keyup', e => {
   if (e.key === ' ' || e.key === 'Enter' || e.key === 'z') { hold(false); e.preventDefault(); }
 });
 
-let cv = null, cx = null, BW = 360, BH = 480, CS = 6;   // フィールドの絵の大きさ(横・たて)と、1マスの大きさ
+let cv = null, cx = null, BW = 360, BH = 480, CS = 6, PX = 8, DPR = 1;   // PX = フィールドのまわりのすき間(はしのキャラが切れないように)
+const PADM = 2.4;   // すき間の大きさ(マス)
 function resize() {
   if (!cv) return;
   const r = app.getBoundingClientRect();
   // 横はばいっぱい。たてが入りきらなければ、たてに合わせて小さくする
-  BW = Math.min(r.width || 360, 460, (window.innerHeight - 300) * CC.W / CC.H);
-  BW = Math.floor(Math.max(210, BW));
-  CS = BW / CC.W; BH = Math.round(CS * CC.H);
-  const dpr = window.devicePixelRatio || 1;
-  cv.width = Math.round(BW * dpr); cv.height = Math.round(BH * dpr);
-  cv.style.width = BW + 'px'; cv.style.height = BH + 'px';
-  cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const TW = Math.floor(Math.max(210, Math.min(r.width || 360, 460, (window.innerHeight - 300) * (CC.W + PADM * 2) / (CC.H + PADM * 2))));
+  CS = TW / (CC.W + PADM * 2); BW = CS * CC.W; BH = CS * CC.H; PX = CS * PADM;
+  const TH = Math.round(BH + PX * 2);
+  DPR = window.devicePixelRatio || 1;
+  cv.width = Math.round(TW * DPR); cv.height = Math.round(TH * DPR);
+  cv.style.width = TW + 'px'; cv.style.height = TH + 'px';
+  cx.setTransform(DPR, 0, 0, DPR, 0, 0);
   terrVer = -1;
 }
 window.addEventListener('resize', () => { if (G && cv && document.body.contains(cv)) resize(); });
@@ -158,7 +160,7 @@ function events() {
   for (const e of G.events) {
     if (e.t === 'die') {
       boom(e.x, e.y, COLORS[e.p]);
-      if (e.p === ME) toast(e.by >= 0 ? T('{name} にやられた', { name: esc(NAMES[e.by]) }) : e.by === -2 ? T('敵にやられた') : T('やられた'));
+      if (e.p === ME) toast(e.by >= 0 ? T('{name} にやられた', { name: esc(NAMES[e.by]) }) : e.by === -2 ? T('ダイヤンにやられた') : e.by === -3 ? T('アスタンにやられた') : T('やられた'));
       else if (e.by === ME) toast(T('{name} をたおした！', { name: esc(NAMES[e.p]) }));
     }
     if (e.t === 'claim') { const P = G.players[e.p]; flash.push({ p: e.p, t: 0.5, x: P.x, y: P.y, n: G.area[e.p] }); }
@@ -168,6 +170,7 @@ function events() {
 /* ---------- 描画(ネオン風) ---------- */
 const FX = [], flash = [];
 const ETR = { g: null, l: [] };   // ダイヤンの通ったあと(画面だけ)
+const SPK = [];   // アスタンの火花(画面だけ)
 function boom(x, y, col) { for (let k = 0; k < 14; k++) { const a = Math.random() * 7, s = 4 + Math.random() * 10; FX.push({ x: x + 0.5, y: y + 0.5, vx: Math.cos(a) * s, vy: Math.sin(a) * s, t: 0.6, col }); } }
 let terrVer = -1, fillC = null, edgeC = null;
 function hexA(h, a) { const n = parseInt(h.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; }
@@ -204,6 +207,8 @@ function draw(dt) {
     return [P.px + (P.x - P.px) * f, P.py + (P.y - P.py) * f];
   };
   cx.imageSmoothingEnabled = false;
+  cx.setTransform(DPR, 0, 0, DPR, 0, 0); cx.clearRect(0, 0, cv.width, cv.height);
+  cx.translate(PX, PX);   // フィールドのまわりにすき間
   cx.fillStyle = '#080d1c'; cx.fillRect(0, 0, BW, BH);
   // まだだれのものでもない場所の点
   cx.fillStyle = 'rgba(120,160,255,.10)';
@@ -287,6 +292,24 @@ function draw(dt) {
     cx.fillStyle = '#f4f6ff'; cx.shadowColor = '#ffffff'; cx.shadowBlur = 8; cx.fill();
     cx.restore();
   }
+  // アスタン(線の上を走る敵): 白+ライムの「＊」がくるくる回る。ライム色の火花をちらす
+  for (const S of G.sparx) {
+    const f = Math.abs(S.x - S.px) + Math.abs(S.y - S.py) === 1 ? Math.max(0, Math.min(1, (vt - S.mt) / S.ms)) : 1;
+    const x = (S.px + (S.x - S.px) * f + 0.5) * CS, y = (S.py + (S.y - S.py) * f + 0.5) * CS;
+    for (let n = 0; n < 2; n++) { const a = Math.random() * 6.28, v = CS * (8 + Math.random() * 14); SPK.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: 0.25 + Math.random() * 0.3, t0: 0.55 }); }
+    const L = CS * 2.1, star = (l, w) => { cx.lineWidth = w; cx.beginPath(); for (let j = 0; j < 4; j++) { const a = j * Math.PI / 4; cx.moveTo(-Math.cos(a) * l, -Math.sin(a) * l); cx.lineTo(Math.cos(a) * l, Math.sin(a) * l); } cx.stroke(); };
+    cx.save(); cx.translate(x, y); cx.rotate(vt / 40 + S.k); cx.lineCap = 'round';
+    cx.strokeStyle = '#b8ff2e'; cx.shadowColor = '#b8ff2e'; cx.shadowBlur = 10; star(L, Math.max(1.6, CS * 0.42));
+    cx.strokeStyle = '#ffffff'; cx.shadowBlur = 4; star(L * 0.55, Math.max(1.6, CS * 0.44));
+    cx.restore();
+  }
+  for (const f of SPK) {
+    f.t -= dt; f.x += f.vx * dt; f.y += f.vy * dt; f.vy += CS * 14 * dt;
+    const al = Math.max(0, f.t / f.t0);
+    cx.fillStyle = al > 0.6 ? `rgba(245,255,220,${al})` : `rgba(184,255,46,${Math.min(1, al * 1.6)})`; cx.shadowColor = '#b8ff2e'; cx.shadowBlur = 6;
+    const z = Math.max(2, CS * 0.45) * (0.5 + al * 0.5); cx.fillRect(f.x - z / 2, f.y - z / 2, z, z); cx.shadowBlur = 0;
+  }
+  for (let k = SPK.length - 1; k >= 0; k--) if (SPK[k].t <= 0) SPK.splice(k, 1);
   // やられたときの火花
   for (const f of FX) {
     f.t -= dt; f.x += f.vx * dt; f.y += f.vy * dt;

@@ -52,6 +52,7 @@ def handler_for(uid):
             op = o["op"]
             if op == "uid": return uid
             if op == "get": return as_list(get_at(o["path"]))
+            if op == "getmany": return [as_list(get_at(p)) for p in o["paths"]]   # 全部を同じ時に読む(本物の Firebase と同じく、書いた順に届くように)
             if op == "set": set_at(o["path"], o.get("value")); return None
             if op == "update":
                 for k, v in o["value"].items(): set_at(o["path"].rstrip("/") + "/" + k, v)
@@ -93,18 +94,31 @@ Ref.prototype.onDisconnect = function(){ const path = this.path; return {
   set: async v => call({op:'odset', path, value:v}), remove: async () => call({op:'odset', path, value:null}),
   cancel: async () => call({op:'odcancel', path}) }; };
 Ref.prototype.on = function(ev, cb){
-  const sub = { stop:false }; this._subs.push(sub); (Ref._all[this.path] = Ref._all[this.path] || []).push(sub);
-  let last = '__init'; const seen = new Set();
-  const tick = async () => {
-    if (sub.stop) return;
-    const v = await call({op:'get', path:this.path});
-    if (ev === 'value') { const j = JSON.stringify(v ?? null); if (j !== last) { last = j; cb(snap(v ?? null, this.key)); } }
-    else if (ev === 'child_added' && v && typeof v === 'object') {
-      for (const k of Object.keys(v).sort()) if (!seen.has(k)) { seen.add(k); cb(snap(v[k], k)); }
+  const sub = { stop:false, path:this.path, key:this.key, ev, cb, last:'__init', seen:new Set() };
+  this._subs.push(sub); (Ref._all[this.path] = Ref._all[this.path] || []).push(sub);
+  Ref._list.push(sub); Ref._run();
+};
+/* 聞いている所を、まとめて同じ時に読んで知らせる(道ごとに別々に読むと、書いた順とちがう順に届くことがあるため) */
+Ref._list = []; Ref._busy = false;
+Ref._run = function(){
+  if (Ref._busy) return; Ref._busy = true;
+  const loop = async () => {
+    Ref._list = Ref._list.filter(s => !s.stop);
+    const subs = Ref._list.slice();
+    if (subs.length) {
+      const vals = await call({op:'getmany', paths: subs.map(s => s.path)});
+      subs.forEach((sub, n) => {
+        if (sub.stop) return;
+        const v = vals[n];
+        if (sub.ev === 'value') { const j = JSON.stringify(v ?? null); if (j !== sub.last) { sub.last = j; sub.cb(snap(v ?? null, sub.key)); } }
+        else if (sub.ev === 'child_added' && v && typeof v === 'object') {
+          for (const k of Object.keys(v).sort()) if (!sub.seen.has(k)) { sub.seen.add(k); sub.cb(snap(v[k], k)); }
+        }
+      });
     }
-    if (!sub.stop) setTimeout(tick, 40);
+    setTimeout(loop, 40);
   };
-  tick();
+  loop();
 };
 Ref.prototype.off = function(){ for (const s of (Ref._all[this.path] || [])) s.stop = true; Ref._all[this.path] = []; };
 Ref._all = {};
