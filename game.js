@@ -93,7 +93,16 @@ function play(opt) {
     <button id="abtn" class="abtn">A</button>
   </div>`;
   cv = $('cv'); cx = cv.getContext('2d');
+  hud();      // 順位の行を先に出して、本当の高さで盤の大きさを決める
   resize();
+  // 順位の行が2段・3段にふえたら、盤を小さくする(へったときは戻さない = 盤がゆれない)
+  const rk = $('rank'); let rankH = rk.offsetHeight;
+  rk.style.minHeight = rankH + 'px';
+  if (window.ResizeObserver) new ResizeObserver(() => {
+    if (!document.body.contains(rk)) return;
+    const h = rk.offsetHeight;
+    if (h > rankH + 1) { rankH = h; rk.style.minHeight = h + 'px'; resize(); }
+  }).observe(rk);
   app.querySelectorAll('[data-d]').forEach(b => b.onpointerdown = e => { e.preventDefault(); act('d', +b.dataset.d); press(b); });
   // A: 押しているあいだダッシュ
   const ab = $('abtn');
@@ -130,7 +139,11 @@ function resize() {
   if (!cv) return;
   const r = app.getBoundingClientRect();
   // 横はばいっぱい。たてが入りきらなければ、たてに合わせて小さくする
-  const TW = Math.floor(Math.max(210, Math.min(r.width || 360, 460, (window.innerHeight - 300) * (CC.W + PADM * 2) / (CC.H + PADM * 2))));
+  // たては、盤のほか(上の情報・順位・ボタン・すき間・スマホの上下の安全エリア)の本当の高さを測って、のこりを使う(v=5〜)
+  const bs = getComputedStyle(document.body);
+  const other = app.offsetHeight - cv.parentNode.offsetHeight + (parseFloat(bs.paddingTop) || 0) + (parseFloat(bs.paddingBottom) || 0);
+  const availH = window.innerHeight - other - 6;
+  const TW = Math.floor(Math.max(210, Math.min(r.width || 360, 460, availH * (CC.W + PADM * 2) / (CC.H + PADM * 2))));
   CS = TW / (CC.W + PADM * 2); BW = CS * CC.W; BH = CS * CC.H; PX = CS * PADM;
   const TH = Math.round(BH + PX * 2);
   DPR = window.devicePixelRatio || 1;
