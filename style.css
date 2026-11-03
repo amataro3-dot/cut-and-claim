@@ -53,11 +53,15 @@ button.mini{padding:7px 11px;font-size:13px}
 /* 操作ボタン: 左に矢印4つ(離して置く)、右に A */
 .pad{display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding:0 4px}
 .pad.spec{visibility:hidden}
-.arrows{position:relative;width:186px;height:186px;flex:none}
-.ar{position:absolute;width:62px;height:62px;margin:0;padding:0;border-radius:14px;font-size:22px;background:#101a33;color:var(--ac);border:2px solid #2a3c66;box-shadow:0 0 10px rgba(59,232,255,.15)}
-.ar0{left:62px;top:0}.ar2{left:62px;bottom:0}.ar3{left:0;top:62px}.ar1{right:0;top:62px}
-.abtn{width:116px;height:116px;border-radius:50%;margin:0 10px 0 0;font-size:40px;background:radial-gradient(circle at 40% 35%,#ff7a92,#ff3b5c 60%,#a3132f);color:#fff;box-shadow:0 0 22px rgba(255,59,92,.55);border:2px solid #ff9db0}
+.arrows{position:relative;width:168px;height:168px;flex:none}
+.ar{position:absolute;width:56px;height:56px;margin:0;padding:0;border-radius:14px;font-size:20px;background:#101a33;color:var(--ac);border:2px solid #2a3c66;box-shadow:0 0 10px rgba(59,232,255,.15)}
+.ar0{left:56px;top:0}.ar2{left:56px;bottom:0}.ar3{left:0;top:56px}.ar1{right:0;top:56px}
+.abtn{--g:100%;position:relative;isolation:isolate;width:104px;height:104px;border-radius:50%;margin:0 14px 0 0;font-size:36px;background:radial-gradient(circle at 40% 35%,#ff7a92,#ff3b5c 60%,#a3132f);color:#fff;box-shadow:0 0 22px rgba(255,59,92,.55);border:2px solid #ff9db0}
 .hit{filter:brightness(1.6);transform:scale(.95)}
+/* A のまわりの輪 = ダッシュのゲージ(へると輪が短くなる。使いきったら、たまるまで灰色) */
+.abtn::before{content:"";position:absolute;inset:-10px;border-radius:50%;z-index:-1;background:conic-gradient(#3be8ff var(--g),rgba(59,232,255,.12) 0);-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 6px),#000 calc(100% - 5px));mask:radial-gradient(farthest-side,transparent calc(100% - 6px),#000 calc(100% - 5px));filter:drop-shadow(0 0 4px #3be8ff)}
+.abtn.tired::before{background:conic-gradient(#6b7699 var(--g),rgba(107,118,153,.15) 0);filter:none}
+.abtn.on{filter:brightness(1.35)}
 
 /* 結果 */
 table.res{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}

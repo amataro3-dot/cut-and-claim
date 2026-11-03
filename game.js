@@ -37,11 +37,12 @@ function home() {
   <div class="card left">
     <div class="lbl">${T('遊び方')}</div>
     <div>① ${T('△は、線の上を自動で進む')}</div>
-    <div>② ${T('A を押すと、枠の中へ進んでいく。矢印で向きを変える')}</div>
+    <div>② ${T('線の上で、空いている側の矢印を押すと、枠の中へ進んでいく。中でも矢印で向きを変える')}</div>
     <div>③ ${T('線に戻ってこられたら、囲んだうち敵がいないほうが自分の陣地になる(どちらにもいなければ小さいほう)')}</div>
     <div>④ ${T('中を進んでいる線を、人や敵にさわられたら、やられる(自分の線にぶつかっても)。5秒で復活')}</div>
     <div>⑤ ${T('線の上にいるときは安全')}</div>
-    <div>⑥ ${T('陣地が目標をこえるか、3分たって陣地がいちばん広い人の勝ち。目標は 2〜3人で50%、4〜5人で35%、6〜8人で25%')}</div>
+    <div>⑥ ${T('A を押しているあいだ、ダッシュ(2倍の速さ)。ゲージは線の上でたまる')}</div>
+    <div>⑦ ${T('陣地が目標をこえるか、3分たって陣地がいちばん広い人の勝ち。目標は 2〜3人で50%、4〜8人で35%')}</div>
   </div>
   <button id="solo" class="wide">${T('ひとりで練習(CPU対戦)')}</button>
   ${window.NO_ONLINE ? `<button class="wide sub" disabled>${T('オンライン対戦は muddys-games.com で遊べます')}</button>` : `<button id="online" class="wide">${T('オンライン対戦(8人まで)')}</button>`}
@@ -80,7 +81,7 @@ function play(opt) {
   stopLoop();
   G = CC.newGame(opt.seed, opt.slots, opt.limit);
   ME = opt.me; NAMES = opt.names; online = !!opt.online;
-  intro = 2.2; acc = 0; toasts = []; FX.length = 0; terrVer = -1;
+  intro = 2.2; acc = 0; held = false; toasts = []; FX.length = 0; terrVer = -1;
   guard('game', online ? netLeaveToEntry : () => solo());
   app.innerHTML = `
   <div class="hud"><span id="ht">3:00</span><span id="hp" class="me"></span><button id="quit" class="sub mini">✕</button></div>
@@ -93,36 +94,46 @@ function play(opt) {
   cv = $('cv'); cx = cv.getContext('2d');
   resize();
   app.querySelectorAll('[data-d]').forEach(b => b.onpointerdown = e => { e.preventDefault(); act('d', +b.dataset.d); press(b); });
-  $('abtn').onpointerdown = e => { e.preventDefault(); act('a', 0); press($('abtn')); };
+  // A: 押しているあいだダッシュ
+  const ab = $('abtn');
+  ab.onpointerdown = e => { e.preventDefault(); try { ab.setPointerCapture(e.pointerId); } catch (_) { } hold(true); press(ab); };
+  ab.onpointerup = ab.onpointercancel = ab.onlostpointercapture = () => hold(false);
   $('quit').onclick = () => {
     if ($('quit').classList.contains('sure')) { if (online) netLeaveToEntry(); else solo(); }
     else { $('quit').classList.add('sure'); $('quit').textContent = T('本当にやめる？'); setTimeout(() => { const q = $('quit'); if (q) { q.classList.remove('sure'); q.textContent = '✕'; } }, 2500); }
   };
   lastT = performance.now(); raf = requestAnimationFrame(loop);
 }
+let held = false;
+function hold(on) { if (held === on) return; held = on; $('abtn') && $('abtn').classList.toggle('on', on); act('a', on ? 1 : 0); }
 function press(b) { b.classList.add('hit'); setTimeout(() => b.classList.remove('hit'), 120); try { navigator.vibrate && navigator.vibrate(8); } catch (e) { } }
 /* 操作: ひとりならすぐ、オンラインは net.js で送る */
 function act(a, d) {
-  if (!G || G.over || ME < 0 || intro > 0) return;
+  if (!G || G.over || ME < 0 || (intro > 0 && a !== 'a')) return;
   if (online) netSend(a, d); else CC.command(G, ME, a, d);
 }
 const KEYS = { ArrowUp: 0, ArrowRight: 1, ArrowDown: 2, ArrowLeft: 3, w: 0, d: 1, s: 2, a: 3 };
 window.addEventListener('keydown', e => {
   if (!G || !$('cv')) return;
   if (e.key in KEYS) { act('d', KEYS[e.key]); e.preventDefault(); }
-  else if (e.key === ' ' || e.key === 'Enter' || e.key === 'z') { act('a', 0); e.preventDefault(); }
+  else if (e.key === ' ' || e.key === 'Enter' || e.key === 'z') { if (!e.repeat) hold(true); e.preventDefault(); }
+});
+window.addEventListener('keyup', e => {
+  if (!G || !$('cv')) return;
+  if (e.key === ' ' || e.key === 'Enter' || e.key === 'z') { hold(false); e.preventDefault(); }
 });
 
-let cv = null, cx = null, W = 360, CS = 6;
+let cv = null, cx = null, BW = 360, BH = 480, CS = 6;   // フィールドの絵の大きさ(横・たて)と、1マスの大きさ
 function resize() {
   if (!cv) return;
   const r = app.getBoundingClientRect();
-  W = Math.floor(Math.min(r.width || 360, 460, window.innerHeight - 290));
-  W = Math.max(240, W);
-  CS = W / CC.N;
+  // 横はばいっぱい。たてが入りきらなければ、たてに合わせて小さくする
+  BW = Math.min(r.width || 360, 460, (window.innerHeight - 300) * CC.W / CC.H);
+  BW = Math.floor(Math.max(210, BW));
+  CS = BW / CC.W; BH = Math.round(CS * CC.H);
   const dpr = window.devicePixelRatio || 1;
-  cv.width = Math.round(W * dpr); cv.height = Math.round(W * dpr);
-  cv.style.width = W + 'px'; cv.style.height = W + 'px';
+  cv.width = Math.round(BW * dpr); cv.height = Math.round(BH * dpr);
+  cv.style.width = BW + 'px'; cv.style.height = BH + 'px';
   cx.setTransform(dpr, 0, 0, dpr, 0, 0);
   terrVer = -1;
 }
@@ -162,12 +173,12 @@ let terrVer = -1, fillC = null, edgeC = null;
 function hexA(h, a) { const n = parseInt(h.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; }
 /* 陣地の絵(1マス = 1点の小さい絵)を、変わったときだけ作り直す */
 function buildTerritory() {
-  const N = CC.N;
-  if (!fillC) { fillC = document.createElement('canvas'); edgeC = document.createElement('canvas'); fillC.width = fillC.height = edgeC.width = edgeC.height = N; }
+  const MW = CC.W, MH = CC.H;
+  if (!fillC) { fillC = document.createElement('canvas'); edgeC = document.createElement('canvas'); fillC.width = edgeC.width = MW; fillC.height = edgeC.height = MH; }
   const f = fillC.getContext('2d'), e = edgeC.getContext('2d');
-  const fi = f.createImageData(N, N), ei = e.createImageData(N, N);
+  const fi = f.createImageData(MW, MH), ei = e.createImageData(MW, MH);
   const rgb = COLORS.map(h => { const n = parseInt(h.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; });
-  for (let i = 0; i < N * N; i++) {
+  for (let i = 0; i < MW * MH; i++) {
     const o = G.own[i], k = i * 4;
     if (o > 0) {
       const c = rgb[o - 1];
@@ -183,14 +194,21 @@ function buildTerritory() {
 }
 function draw(dt) {
   if (!cx) return;
-  const N = CC.N;
+  const MW = CC.W;
   if (terrVer !== G.ver) buildTerritory();
+  // なめらかに見せる: 1コマの中の、いまの時間(画面だけ。計算には関係ない)
+  const fr = Math.max(0, Math.min(1, acc / CC.TICK)), vt = G.tick + fr;
+  const ppos = P => {   // △の見た目の位置(前のマスから今のマスへ、すーっと)
+    if (Math.abs(P.x - P.px) + Math.abs(P.y - P.py) !== 1) return [P.x, P.y];
+    const f = Math.max(0, Math.min(1, (vt - P.mt) / P.ms));
+    return [P.px + (P.x - P.px) * f, P.py + (P.y - P.py) * f];
+  };
   cx.imageSmoothingEnabled = false;
-  cx.fillStyle = '#080d1c'; cx.fillRect(0, 0, W, W);
+  cx.fillStyle = '#080d1c'; cx.fillRect(0, 0, BW, BH);
   // まだだれのものでもない場所の点
   cx.fillStyle = 'rgba(120,160,255,.10)';
-  for (let y = 5; y < N; y += 5) for (let x = 5; x < N; x += 5) cx.fillRect((x + 0.5) * CS - 1, (y + 0.5) * CS - 1, 2, 2);
-  cx.drawImage(fillC, 0, 0, W, W);
+  for (let y = 5; y < CC.H; y += 5) for (let x = 5; x < MW; x += 5) cx.fillRect((x + 0.5) * CS - 1, (y + 0.5) * CS - 1, 2, 2);
+  cx.drawImage(fillC, 0, 0, BW, BH);
   // 囲んだ瞬間に光る
   for (const f of flash) {
     f.t -= dt;
@@ -201,9 +219,9 @@ function draw(dt) {
   }
   for (let k = flash.length - 1; k >= 0; k--) if (flash[k].t <= 0) flash.splice(k, 1);
   // 線(ふち)を光らせる
-  cx.drawImage(edgeC, 0, 0, W, W);
+  cx.drawImage(edgeC, 0, 0, BW, BH);
   cx.save(); cx.globalCompositeOperation = 'lighter'; cx.filter = `blur(${Math.max(2, CS * 0.7)}px)`; cx.globalAlpha = 0.9;
-  cx.imageSmoothingEnabled = true; cx.drawImage(edgeC, 0, 0, W, W); cx.restore();
+  cx.imageSmoothingEnabled = true; cx.drawImage(edgeC, 0, 0, BW, BH); cx.restore();
   // 中を進んでいる線
   cx.lineCap = 'round'; cx.lineJoin = 'round';
   for (const P of G.players) {
@@ -212,26 +230,37 @@ function draw(dt) {
     cx.strokeStyle = COLORS[P.i]; cx.lineWidth = Math.max(1.5, CS * 0.45);
     cx.shadowColor = COLORS[P.i]; cx.shadowBlur = 10;
     cx.beginPath();
-    pts.forEach((i, k) => { const x = (i % N + 0.5) * CS, y = ((i / N | 0) + 0.5) * CS; if (k) cx.lineTo(x, y); else cx.moveTo(x, y); });
+    const hd = ppos(P);
+    pts.forEach((i, k) => {
+      let x = i % MW, y = i / MW | 0;
+      if (k === pts.length - 1) [x, y] = hd;   // 先は、△といっしょにすーっと
+      x = (x + 0.5) * CS; y = (y + 0.5) * CS;
+      if (k) cx.lineTo(x, y); else cx.moveTo(x, y);
+    });
     cx.stroke(); cx.shadowBlur = 0;
   }
   // △
   for (const P of G.players) {
     if (P.mode === 'dead') continue;
-    const x = (P.x + 0.5) * CS, y = (P.y + 0.5) * CS, s = CS * (P.i === ME ? 2.3 : 1.9), a = P.dir * Math.PI / 2;
+    const [vx, vy] = ppos(P), x = (vx + 0.5) * CS, y = (vy + 0.5) * CS, s = CS * (P.i === ME ? 2.3 : 1.9), a = P.dir * Math.PI / 2;
     cx.save(); cx.translate(x, y); cx.rotate(a);
     // 中は塗らずに、線だけの△(自分は太く、内側に白い線)
     cx.beginPath(); cx.moveTo(0, -s); cx.lineTo(s * 0.8, s * 0.7); cx.lineTo(-s * 0.8, s * 0.7); cx.closePath();
     cx.strokeStyle = COLORS[P.i]; cx.shadowColor = COLORS[P.i]; cx.shadowBlur = P.i === ME ? 16 : 10;
     cx.lineWidth = P.i === ME ? 3.2 : 2.2; cx.stroke(); cx.shadowBlur = 0;
     if (P.i === ME) { cx.lineWidth = 1.2; cx.strokeStyle = '#fff'; cx.stroke(); }
+    if (P.dash) {   // ダッシュ中: うしろに短い光のすじ
+      cx.strokeStyle = hexA(COLORS[P.i], 0.7); cx.lineWidth = 1.5; cx.shadowColor = COLORS[P.i]; cx.shadowBlur = 6;
+      cx.beginPath();
+      for (const o of [-0.45, 0, 0.45]) { cx.moveTo(o * s, s * 1.0); cx.lineTo(o * s, s * (o ? 1.8 : 2.2)); }
+      cx.stroke(); cx.shadowBlur = 0;
+    }
     cx.restore();
   }
   // 中の敵「ダイヤン」: 白い細長い◇(中を塗る)。くるくるゆっくり回りながら進む。通ったあとがうっすら光る
-  const tm = performance.now() / 1000;
   if (ETR.g !== G) { ETR.g = G; ETR.l = []; }
   for (const [k, E] of G.enemies.entries()) {
-    const ex = E.x / CC.U * CS, ey = E.y / CC.U * CS, L = CS * 3.4, Wd = CS * 0.5;
+    const ex = (E.px + (E.x - E.px) * fr) / CC.U * CS, ey = (E.py + (E.y - E.py) * fr) / CC.U * CS, L = CS * CC.E_LEN, Wd = CS * CC.E_WID;
     const tr = ETR.l[k] || (ETR.l[k] = []);
     const lt = tr[tr.length - 1];
     if (!lt || lt[0] !== E.x || lt[1] !== E.y) { tr.push([E.x, E.y]); if (tr.length > 45) tr.shift(); }
@@ -243,7 +272,7 @@ function draw(dt) {
         cx.beginPath(); cx.moveTo(tr[j - 1][0] / CC.U * CS, tr[j - 1][1] / CC.U * CS); cx.lineTo(tr[j][0] / CC.U * CS, tr[j][1] / CC.U * CS); cx.stroke();
       }
     }
-    const rot = tm * 1.3 + k * 1.6;
+    const rot = Math.PI * 2 * (vt / CC.SPIN + E.k * 24 / 64) + Math.PI / 2;   // 向きは計算(sim.js)と同じ
     // 回ったあとの残像: うしろ側の長い面のかげを、細い線で何本か。はなれるほどうすく
     const GN = 10, GS = 0.9 / GN;
     cx.lineCap = 'round'; cx.lineWidth = 1; cx.shadowColor = '#cfe0ff'; cx.shadowBlur = 4;
@@ -276,7 +305,8 @@ function hud() {
   $('ht').textContent = Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0');
   const pc = k => (G.area[k] / CC.INNER * 100).toFixed(1) + '%';
   if (ME >= 0) {
-    const P = G.players[ME];
+    const P = G.players[ME], ab = $('abtn');
+    if (ab) { ab.style.setProperty('--g', (P.g / CC.GAUGE_MAX * 100).toFixed(1) + '%'); ab.classList.toggle('tired', !!P.tired); }
     $('hp').innerHTML = `<i style="background:${COLORS[ME]}"></i>${pc(ME)}` + (P.mode === 'dead' ? ` <b>${T('復活まで {n}', { n: Math.max(1, Math.ceil((CC.RESPAWN - (G.tick - P.deadAt)) / 30)) })}</b>` : '');
   }
   const order = G.players.map(P => P.i).sort((a, b) => G.area[b] - G.area[a] || a - b);

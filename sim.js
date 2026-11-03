@@ -9,30 +9,37 @@
    line[i]  1 = 線(歩ける)。枠か陣地のうち、まわり8マスに「だれのものでもない」マスがあるところ */
 (function (root) {
   'use strict';
-  const N = 60;                    // マス目の大きさ(外の枠をふくむ)
+  const W = 60, H = 80;            // マス目の大きさ(横・たて。外の枠をふくむ)
   const TICK = 1 / 30;             // 1コマの時間(1秒に30コマ)
-  const MOVE_EVERY = 6;            // 6コマで1マス進む(1秒に5マス)
+  const STEP = 6;                  // ふつうは6コマで1マス進む(1秒に5マス)。ダッシュ中は2倍(3コマで1マス)
+  const GAUGE_MAX = 180;           // ダッシュのゲージ。ダッシュ中は1コマで2へる(満タンで3秒)、線の上では1コマで1たまる(6秒で満タン)
+  const GAUGE_RESUME = 60;         // 使いきったら、ここまでたまるまで使えない(ガタガタ動かないように)
   const RESPAWN = 150;             // やられてから復活まで(5秒)
   const TIME_LIMIT = 180 * 30;     // 3分
-  const winRate = n => (n <= 3 ? 0.5 : n <= 5 ? 0.35 : 0.25);   // 陣地がこれをこえたら勝ち(人数で変わる)
-  const GO_WAIT = 8;               // A を押してから、中に入れる場所を待つ歩数
+  const winRate = n => (n <= 3 ? 0.5 : 0.35);   // 陣地がこれをこえたら勝ち(2〜3人 50%、4〜8人 35%)
+  const GO_WAIT = 3;               // 線の上で矢印を押してから、その向きに中へ入れる場所を待つ歩数
   const MAX_PLAYERS = 8;
   const DX = [0, 1, 0, -1], DY = [-1, 0, 1, 0];   // 向き: 0 上、1 右、2 下、3 左
   const back = d => (d + 2) & 3;
-  const INNER = (N - 2) * (N - 2);
+  const INNER = (W - 2) * (H - 2);
   /* 中の敵(本家の「クイックス」)。位置は 1マス = 64 の整数(どのスマホでも同じ計算になるように、小数や三角関数を使わない) */
   const U = 64;                    // 1マスの細かさ
-  const ENEMY_R2 = 5;              // 敵のまわりのこの範囲(マスの距離の2乗)の線にさわったら、やられる
+  /* 敵「ダイヤン」は細長い◇。くるくる回る(SPIN コマで1周)。◇の形(少し大きめ)にかかった線を引いていた人がやられる */
+  const SPIN = 144;                // 1周のコマ(約4.8秒)
+  const E_LEN = 5.1, E_WID = 0.5;  // 見た目の長さ(中心からはしまで)・はば(中心から横のかどまで)。マス
+  const HIT_L = Math.round((E_LEN + 0.6) * 64), HIT_W = Math.round((E_WID + 0.6) * 64);   // やられる形(線のマスの大きさのぶん、少し大きめ)
+  /* 64方向の cos×64(小数や三角関数のずれが出ないように、数を書いておく)。sin は 16 ずらして使う */
+  const COS64 = [64, 64, 63, 61, 59, 56, 53, 49, 45, 41, 36, 30, 24, 19, 12, 6, 0, -6, -12, -19, -24, -30, -36, -41, -45, -49, -53, -56, -59, -61, -63, -64, -64, -64, -63, -61, -59, -56, -53, -49, -45, -41, -36, -30, -24, -19, -12, -6, 0, 6, 12, 19, 24, 30, 36, 41, 45, 49, 53, 56, 59, 61, 63, 64];
   const ENEMY_TURN = [20, 70];     // 向きを変えるまでのコマ
   const ENEMY_VEL = [[9, 0], [8, 3], [6, 6], [3, 8], [0, 9], [-3, 8], [-6, 6], [-8, 3], [-9, 0], [-8, -3], [-6, -6], [-3, -8], [0, -9], [3, -8], [6, -6], [8, -3]];   // 1コマで約0.135マス(1秒に約4マス)
   const enemyCount = n => (n >= 5 ? 2 : 1);   // 5人以上なら2体
 
   /* CPU の強さ: a = 中へ進む深さ、b = 横の長さ、cool = 次に入るまでのコマ、
-     danger = 敵の頭がこの距離に来たら帰る、attack = 敵の線がこの距離ならねらう */
+     danger = 敵の頭がこの距離に来たら帰る、attack = 敵の線がこの距離ならねらう、dash = 帰るときにダッシュする */
   const CPU = {
-    easy:   { a: [3, 7],  b: [3, 8],  cool: [60, 150], danger: 0, attack: 0 },
-    normal: { a: [5, 13], b: [5, 13], cool: [30, 90],  danger: 6, attack: 3 },
-    hard:   { a: [7, 18], b: [6, 17], cool: [12, 45],  danger: 9, attack: 7 },
+    easy:   { a: [3, 7],  b: [3, 8],  cool: [60, 150], danger: 0, attack: 0, dash: 0 },
+    normal: { a: [5, 13], b: [5, 13], cool: [30, 90],  danger: 6, attack: 3, dash: 1 },
+    hard:   { a: [7, 18], b: [6, 17], cool: [12, 45],  danger: 9, attack: 7, dash: 1 },
   };
 
   function makeRng(seed) {   // mulberry32(同じ種なら、どのスマホでも同じ並び)
@@ -49,40 +56,41 @@
   /* 新しい試合。slots = [{ cpu: null | 'easy' | 'normal' | 'hard' }, ...](2〜8人)。limit はテスト用(試合の長さのコマ数) */
   function newGame(seed, slots, limit) {
     const G = {
-      n: N, tick: 0, limit: limit || TIME_LIMIT, winRate: winRate(slots.length), rng: makeRng(seed), over: null, ver: 0,
-      own: new Int8Array(N * N), trail: new Int8Array(N * N), line: new Uint8Array(N * N),
-      dist: new Int16Array(N * N), area: [], players: [], events: [], enemies: [],
+      w: W, h: H, tick: 0, limit: limit || TIME_LIMIT, winRate: winRate(slots.length), rng: makeRng(seed), over: null, ver: 0,
+      own: new Int8Array(W * H), trail: new Int8Array(W * H), line: new Uint8Array(W * H),
+      dist: new Int16Array(W * H), area: [], players: [], events: [], enemies: [],
     };
-    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (x === 0 || y === 0 || x === N - 1 || y === N - 1) G.own[y * N + x] = -1;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (x === 0 || y === 0 || x === W - 1 || y === H - 1) G.own[y * W + x] = -1;
     // 外の枠を時計回りに1周する道。全員が同じ間隔で並ぶ
     const ring = [];
-    for (let x = 0; x < N - 1; x++) ring.push([x, 0]);
-    for (let y = 0; y < N - 1; y++) ring.push([N - 1, y]);
-    for (let x = N - 1; x > 0; x--) ring.push([x, N - 1]);
-    for (let y = N - 1; y > 0; y--) ring.push([0, y]);
+    for (let x = 0; x < W - 1; x++) ring.push([x, 0]);
+    for (let y = 0; y < H - 1; y++) ring.push([W - 1, y]);
+    for (let x = W - 1; x > 0; x--) ring.push([x, H - 1]);
+    for (let y = H - 1; y > 0; y--) ring.push([0, y]);
     const n = slots.length;
     slots.forEach((s, i) => {
       const k = Math.floor((i + 0.5) * ring.length / n), [x, y] = ring[k], [nx, ny] = ring[(k + 1) % ring.length];
       const dir = nx > x ? 1 : nx < x ? 3 : ny > y ? 2 : 0;
-      G.players.push({ i, x, y, dir, want: -1, mode: 'line', go: 0, trail: [], start: -1, deadAt: 0, cpu: s.cpu || null,
+      G.players.push({ i, x, y, dir, want: -1, mode: 'line', go: 0, goD: 0, trail: [], px: x, py: y, mt: 0, ms: STEP, acc: 0, g: GAUGE_MAX, hold: false, tired: false, dash: false, start: -1, deadAt: 0, cpu: s.cpu || null,
         ai: { cool: 30 + Math.floor(G.rng() * 60), plan: null, leg: 0, left: 0, home: false }, kills: 0, deaths: 0, best: 0 });
       G.area.push(0);
     });
     for (let k = 0, m = enemyCount(slots.length); k < m; k++) {
       const v = ENEMY_VEL[Math.floor(G.rng() * 16)];
-      G.enemies.push({ x: ((N >> 1) + (m > 1 ? (k ? 8 : -8) : 0)) * U + (U >> 1), y: (N >> 1) * U + (U >> 1), vx: v[0], vy: v[1], turn: 30 });
+      const ex = ((W >> 1) + (m > 1 ? (k ? 8 : -8) : 0)) * U + (U >> 1), ey = (H >> 1) * U + (U >> 1);
+      G.enemies.push({ x: ex, y: ey, px: ex, py: ey, vx: v[0], vy: v[1], turn: 30, k });
     }
     refresh(G);
     return G;
   }
 
-  const idx = (x, y) => y * N + x;
-  const inside = (x, y) => x >= 0 && y >= 0 && x < N && y < N;
+  const idx = (x, y) => y * W + x;
+  const inside = (x, y) => x >= 0 && y >= 0 && x < W && y < H;
 
   /* 線と、線までの近さを数え直す(囲んだあと・始まるとき) */
   function refresh(G) {
     const { own, line, dist } = G;
-    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const i = idx(x, y);
       let l = 0;
       if (own[i] !== 0) {
@@ -96,9 +104,9 @@
     // 線までの近さ(CPU が帰るときに使う)
     dist.fill(9999);
     const q = [];
-    for (let i = 0; i < N * N; i++) if (line[i]) { dist[i] = 0; q.push(i); }
+    for (let i = 0; i < W * H; i++) if (line[i]) { dist[i] = 0; q.push(i); }
     for (let h = 0; h < q.length; h++) {
-      const i = q[h], x = i % N, y = (i / N) | 0;
+      const i = q[h], x = i % W, y = (i / W) | 0;
       for (let d = 0; d < 4; d++) {
         const xx = x + DX[d], yy = y + DY[d];
         if (!inside(xx, yy)) continue;
@@ -107,16 +115,16 @@
       }
     }
     G.area = G.players.map(() => 0);
-    for (let i = 0; i < N * N; i++) if (own[i] > 0) G.area[own[i] - 1]++;
+    for (let i = 0; i < W * H; i++) if (own[i] > 0) G.area[own[i] - 1]++;
     G.players.forEach((P, k) => { P.best = Math.max(P.best, G.area[k]); });
     G.ver++;
   }
 
-  /* 操作。a: 'd' = 矢印(d = 向き)、'a' = A ボタン、'x' = 回線が切れたので CPU にかわる */
+  /* 操作。a: 'd' = 矢印(d = 向き)、'a' = A ボタン(d = 1 押した、0 はなした)、'x' = 回線が切れたので CPU にかわる */
   function command(G, p, a, d) {
     const P = G.players[p]; if (!P) return;
-    if (a === 'd') P.want = d & 3;
-    else if (a === 'a') { if (P.mode === 'line') P.go = GO_WAIT; }
+    if (a === 'd') { P.want = d & 3; if (P.mode === 'line') { P.go = GO_WAIT; P.goD = d & 3; } }   // 線の上で空いている側を押すと、中へ入る
+    else if (a === 'a') { if (!P.cpu) P.hold = !!d; }
     else if (a === 'x') { if (!P.cpu) { P.cpu = 'normal'; P.dropped = true; } }
   }
 
@@ -132,7 +140,7 @@
     if (ok(back(P.dir))) return back(P.dir);
     return -1;
   }
-  /* A を押したとき、中へ入る向き(だれのものでもないマスへ) */
+  /* CPU が中へ入る向き(だれのものでもないマスへ) */
   function goDir(G, P) {
     const free = d => { const x = P.x + DX[d], y = P.y + DY[d]; return inside(x, y) && G.own[idx(x, y)] === 0; };
     const order = [P.want, P.dir, (P.dir + 1) & 3, (P.dir + 3) & 3, back(P.dir)];
@@ -143,7 +151,7 @@
   function kill(G, P, by, enemy) {
     if (P.mode === 'dead') return;
     for (const i of P.trail) if (G.trail[i] === P.i + 1) G.trail[i] = 0;
-    P.trail = []; P.mode = 'dead'; P.deadAt = G.tick; P.deaths++; P.go = 0; P.want = -1;
+    P.trail = []; P.mode = 'dead'; P.deadAt = G.tick; P.deaths++; P.go = 0; P.want = -1; P.dash = false; if (P.cpu) P.hold = false;
     P.ai.plan = null; P.ai.home = false;
     if (by && by !== P) by.kills++;
     G.events.push({ t: 'die', p: P.i, by: by ? by.i : enemy ? -2 : -1, x: P.x, y: P.y });
@@ -155,12 +163,12 @@
     for (const i of P.trail) { own[i] = me; if (trail[i] === me) trail[i] = 0; }
     P.trail = [];
     // だれのものでもない場所を、つながりごとに分ける
-    const comp = new Int32Array(N * N).fill(-1), sizes = [];
-    for (let s = 0; s < N * N; s++) {
+    const comp = new Int32Array(W * H).fill(-1), sizes = [];
+    for (let s = 0; s < W * H; s++) {
       if (own[s] !== 0 || comp[s] >= 0) continue;
       const c = sizes.length, q = [s]; comp[s] = c;
       for (let h = 0; h < q.length; h++) {
-        const i = q[h], x = i % N, y = (i / N) | 0;
+        const i = q[h], x = i % W, y = (i / W) | 0;
         for (let d = 0; d < 4; d++) {
           const xx = x + DX[d], yy = y + DY[d];
           if (!inside(xx, yy)) continue;
@@ -175,7 +183,7 @@
     for (const E of G.enemies) { const c = comp[idx(E.x / U | 0, E.y / U | 0)]; if (c >= 0) keep.add(c); }
     if (!keep.size && sizes.length) { let big = 0; sizes.forEach((v, c) => { if (v > sizes[big]) big = c; }); keep.add(big); }
     let got = 0;
-    for (let i = 0; i < N * N; i++) if (comp[i] >= 0 && !keep.has(comp[i])) { own[i] = me; got++; }
+    for (let i = 0; i < W * H; i++) if (comp[i] >= 0 && !keep.has(comp[i])) { own[i] = me; got++; }
     // 囲まれた中で線を引いていた人はやられる
     for (const Q of G.players) if (Q !== P && Q.mode === 'draw' && Q.trail.some(i => own[i] !== 0)) kill(G, Q, P);
     refresh(G);
@@ -186,11 +194,11 @@
   }
   /* いちばん近い線へ移す(陣地の中を通って探す) */
   function snap(G, P) {
-    const seen = new Uint8Array(N * N), s = idx(P.x, P.y), q = [s]; seen[s] = 1;
+    const seen = new Uint8Array(W * H), s = idx(P.x, P.y), q = [s]; seen[s] = 1;
     for (let h = 0; h < q.length; h++) {
       const i = q[h];
-      if (G.line[i]) { P.x = i % N; P.y = (i / N) | 0; const d = lineDir(G, P); if (d >= 0) P.dir = d; return; }
-      const x = i % N, y = (i / N) | 0;
+      if (G.line[i]) { P.x = i % W; P.y = (i / W) | 0; const d = lineDir(G, P); if (d >= 0) P.dir = d; return; }
+      const x = i % W, y = (i / W) | 0;
       for (let d = 0; d < 4; d++) {
         const xx = x + DX[d], yy = y + DY[d];
         if (!inside(xx, yy)) continue;
@@ -202,19 +210,20 @@
   /* 復活の場所: 自分の陣地のふち(なければ外の枠)のうち、ほかの人からいちばん遠い所 */
   function respawn(G, P) {
     const me = P.i + 1, mine = [], frame = [];
-    for (let i = 0; i < N * N; i++) if (G.line[i]) { if (G.own[i] === me) mine.push(i); else if (G.own[i] === -1) frame.push(i); }
+    for (let i = 0; i < W * H; i++) if (G.line[i]) { if (G.own[i] === me) mine.push(i); else if (G.own[i] === -1) frame.push(i); }
     let cand = mine.length ? mine : frame;
-    if (!cand.length) for (let i = 0; i < N * N; i++) if (G.line[i]) cand.push(i);
+    if (!cand.length) for (let i = 0; i < W * H; i++) if (G.line[i]) cand.push(i);
     if (!cand.length) return;
     const others = G.players.filter(Q => Q !== P && Q.mode !== 'dead');
     let best = cand[0], bv = -1;
     for (const i of cand) {
-      const x = i % N, y = (i / N) | 0;
+      const x = i % W, y = (i / W) | 0;
       let v = 9999;
       for (const Q of others) v = Math.min(v, Math.abs(Q.x - x) + Math.abs(Q.y - y));
       if (v > bv) { bv = v; best = i; }
     }
-    P.x = best % N; P.y = (best / N) | 0; P.mode = 'line'; P.want = -1; P.go = 0;
+    P.x = P.px = best % W; P.y = P.py = (best / W) | 0; P.mode = 'line'; P.want = -1; P.go = 0;
+    P.g = GAUGE_MAX; P.tired = false; P.acc = 0;
     P.ai.cool = 20 + Math.floor(G.rng() * 40);
     const d = lineDir(G, P); if (d >= 0) P.dir = d;
     G.events.push({ t: 'spawn', p: P.i });
@@ -233,20 +242,26 @@
     if (!freeAt(G, E.x, ny)) { E.vy = -E.vy; ny = E.y; }
     if (!freeAt(G, nx, ny)) { nx = E.x; ny = E.y; }
     E.x = nx; E.y = ny;
-    // まわりの線にさわったら、その線を引いていた人はやられる
-    const cx = E.x / U | 0, cy = E.y / U | 0;
-    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
-      if (dx * dx + dy * dy > ENEMY_R2 || !inside(cx + dx, cy + dy)) continue;
-      const t = G.trail[idx(cx + dx, cy + dy)];
-      if (t) { const P = G.players[t - 1]; if (P.mode === 'draw') kill(G, P, null, true); }
+    // ◇の形にかかった線を引いていた人はやられる
+    const a = enemyAngle(G, E), c = COS64[a], sn = COS64[(a + 48) & 63];
+    const cx = E.x / U | 0, cy = E.y / U | 0, R = Math.ceil(E_LEN) + 1;
+    for (let y = cy - R; y <= cy + R; y++) for (let x = cx - R; x <= cx + R; x++) {
+      if (!inside(x, y)) continue;
+      const t = G.trail[idx(x, y)]; if (!t) continue;
+      const dx = x * U + (U >> 1) - E.x, dy = y * U + (U >> 1) - E.y;
+      const al = Math.abs(dx * c + dy * sn) >> 6, pe = Math.abs(dy * c - dx * sn) >> 6;   // ◇の長いほうの向き・横の向きのきょり
+      if (al * HIT_W + pe * HIT_L > HIT_L * HIT_W) continue;
+      const P = G.players[t - 1]; if (P.mode === 'draw') kill(G, P, null, true);
     }
   }
+  /* ダイヤンの向き(0〜63)。時間で決まる(どのスマホでも同じ) */
+  const enemyAngle = (G, E) => ((G.tick * 64 / SPIN | 0) + E.k * 24) & 63;
   /* 敵のいるマスが空きでなくなったとき(念のため)、いちばん近い空きへ */
   function enemyHome(G, E) {
     const cx = E.x / U | 0, cy = E.y / U | 0;
     let best = -1, bv = 1e9;
-    for (let i = 0; i < N * N; i++) if (G.own[i] === 0) { const v = Math.abs(i % N - cx) + Math.abs((i / N | 0) - cy); if (v < bv) { bv = v; best = i; } }
-    if (best >= 0) { E.x = (best % N) * U + (U >> 1); E.y = (best / N | 0) * U + (U >> 1); }
+    for (let i = 0; i < W * H; i++) if (G.own[i] === 0) { const v = Math.abs(i % W - cx) + Math.abs((i / W | 0) - cy); if (v < bv) { bv = v; best = i; } }
+    if (best >= 0) { E.x = (best % W) * U + (U >> 1); E.y = (best / W | 0) * U + (U >> 1); }
   }
   const enemyNear = (G, x, y, r) => G.enemies.some(E => Math.abs((E.x / U | 0) - x) + Math.abs((E.y / U | 0) - y) <= r);
 
@@ -254,15 +269,16 @@
   const rint = (G, [a, b]) => a + Math.floor(G.rng() * (b - a + 1));
   function cpuThink(G, P) {
     const L = CPU[P.cpu] || CPU.normal, A = P.ai;
+    P.hold = !!(L.dash && P.mode === 'draw' && A.home);   // 帰るときにダッシュ
     if (P.mode === 'line') {
       if (A.cool > 0) { A.cool--; return; }
-      if (enemyNear(G, P.x, P.y, 9)) return;   // 敵が近いときは入らない
+      if (enemyNear(G, P.x, P.y, 12)) return;   // 敵が近いときは入らない
       const d = goDir(G, P);
       if (d < 0) return;
       // 中へ a マス、横へ b マス、そのあとは線へ帰る(コの字)
       const side = G.rng() < 0.5 ? (d + 1) & 3 : (d + 3) & 3;
       A.plan = [[d, rint(G, L.a)], [side, rint(G, L.b)]]; A.leg = 0; A.left = A.plan[0][1]; A.home = false;
-      P.want = d; P.go = GO_WAIT;
+      P.want = d; P.go = GO_WAIT; P.goD = d;
       A.cool = rint(G, L.cool);
       return;
     }
@@ -270,7 +286,7 @@
     // 敵の頭が近い・線が長い → 帰る
     if (L.danger && !A.home) {
       for (const Q of G.players) if (Q !== P && Q.mode === 'draw' && Math.abs(Q.x - P.x) + Math.abs(Q.y - P.y) <= L.danger) { A.home = true; break; }
-      if (enemyNear(G, P.x, P.y, L.danger + 2)) A.home = true;
+      if (enemyNear(G, P.x, P.y, L.danger + 6)) A.home = true;
       if (P.trail.length > 70) A.home = true;
     }
     // 敵の線が近ければねらう
@@ -290,7 +306,7 @@
       if (A.left <= 0) { A.leg++; if (A.leg < A.plan.length) A.left = A.plan[A.leg][1]; }
       if (A.leg < A.plan.length) { P.want = A.plan[A.leg][0]; A.left--; if (safe(G, P, P.want)) return; }
     }
-    A.home = true;
+    A.home = true; if (L.dash) P.hold = true;
     // 線へ帰る: 自分の線にぶつからない向きのうち、線にいちばん近い向き
     let bd = -1, bv = 1e9;
     for (let d = 0; d < 4; d++) {
@@ -318,8 +334,16 @@
     G.events = [];
     // 復活
     for (const P of G.players) if (P.mode === 'dead' && G.tick - P.deadAt >= RESPAWN) respawn(G, P);
-    for (const E of G.enemies) enemyStep(G, E);
-    if (G.tick % MOVE_EVERY === 0) move(G);
+    for (const E of G.enemies) { E.px = E.x; E.py = E.y; enemyStep(G, E); }
+    // ダッシュとゲージ
+    for (const P of G.players) {
+      if (P.mode === 'dead') continue;
+      P.dash = P.hold && !P.tired && P.g > 0;
+      if (P.dash) { P.g = Math.max(0, P.g - 2); if (!P.g) P.tired = true; }
+      else if (P.mode === 'line') { P.g = Math.min(GAUGE_MAX, P.g + 1); if (P.tired && P.g >= GAUGE_RESUME) P.tired = false; }
+      P.acc += P.dash ? 2 : 1;
+    }
+    move(G);
     // 勝ち負け
     const free = INNER - G.area.reduce((s, v) => s + v, 0);
     const top = Math.max(...G.area);
@@ -327,17 +351,20 @@
     else if (G.tick >= G.limit || free <= 0) G.over = { reason: G.tick >= G.limit ? 'time' : 'full', win: G.area.map((v, k) => v === top ? k : -1).filter(k => k >= 0) };
   }
 
+  /* このコマで1マス進む人(ふつうは6コマごと、ダッシュ中は3コマごと)を動かす */
   function move(G) {
     const { own, trail, line } = G;
-    for (const P of G.players) if (P.cpu && P.mode !== 'dead') cpuThink(G, P);
-    // 1) みんなの行き先を決める
+    const movers = G.players.filter(P => P.mode !== 'dead' && P.acc >= STEP);
+    if (!movers.length) return;
+    for (const P of movers) { P.acc -= STEP; P.px = P.x; P.py = P.y; P.mt = G.tick; P.ms = P.dash ? STEP >> 1 : STEP; }
+    for (const P of movers) if (P.cpu) cpuThink(G, P);
+    // 1) 行き先を決める
     const plan = [];
-    for (const P of G.players) {
-      if (P.mode === 'dead') continue;
+    for (const P of movers) {
       if (P.mode === 'line') {
         if (P.go > 0) {
-          const d = goDir(G, P);
-          if (d >= 0) { P.dir = d; P.mode = 'draw'; P.go = 0; P.start = idx(P.x, P.y); plan.push({ P, x: P.x + DX[d], y: P.y + DY[d] }); continue; }
+          const d = P.goD, fx = P.x + DX[d], fy = P.y + DY[d];
+          if (inside(fx, fy) && own[idx(fx, fy)] === 0) { P.dir = d; P.mode = 'draw'; P.go = 0; P.start = idx(P.x, P.y); plan.push({ P, x: P.x + DX[d], y: P.y + DY[d] }); continue; }
           P.go--;
         }
         const d = lineDir(G, P);
@@ -382,11 +409,11 @@
   /* ずれていないかを確かめる短い文字 */
   function sig(G) {
     let h = 0;
-    for (let i = 0; i < N * N; i++) h = (Math.imul(h, 31) + G.own[i] * 7 + G.trail[i]) | 0;
-    return [G.tick, h >>> 0, G.players.map(P => P.x + '.' + P.y + P.mode[0]).join('/'), G.enemies.map(E => E.x + '.' + E.y).join('/')].join(',');
+    for (let i = 0; i < W * H; i++) h = (Math.imul(h, 31) + G.own[i] * 7 + G.trail[i]) | 0;
+    return [G.tick, h >>> 0, G.players.map(P => P.x + '.' + P.y + P.mode[0] + P.g).join('/'), G.enemies.map(E => E.x + '.' + E.y).join('/')].join(',');
   }
 
-  const API = { N, U, TICK, MOVE_EVERY, RESPAWN, TIME_LIMIT, winRate, INNER, MAX_PLAYERS, CPU, DX, DY, makeRng, newGame, step, command, sig, idx };
+  const API = { W, H, U, TICK, STEP, SPIN, E_LEN, E_WID, GAUGE_MAX, RESPAWN, TIME_LIMIT, winRate, INNER, MAX_PLAYERS, CPU, DX, DY, makeRng, newGame, step, command, sig, idx };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   else root.CC = API;
 })(typeof window !== 'undefined' ? window : this);

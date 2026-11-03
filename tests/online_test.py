@@ -40,7 +40,7 @@ with sync_playwright() as p:
     while time.time() - t0 < 12:
         for n, pg in pages.items():
             if random.random() < 0.5: pg.evaluate(f"__cc.act('d', {random.randrange(4)})")
-            if random.random() < 0.15: pg.evaluate("__cc.act('a', 0)")
+            if random.random() < 0.15: pg.evaluate(f"__cc.act('a', {random.randrange(2)})")
         pages["A"].wait_for_timeout(250)
     st = {n: pg.evaluate("({t: __cc.G.tick, d: NET.desync, c: NET.checked || 0, me: NET.me})") for n, pg in pages.items()}
     check("3台とも進んでいる", all(s["t"] > 200 for s in st.values()), str(st))
