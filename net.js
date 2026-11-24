@@ -86,7 +86,7 @@ async function netEnter(code) {
     const old = (await me.get()).val();
     await me.set({ name: myName, joined: old && old.joined || firebase.database.ServerValue.TIMESTAMP });
     me.onDisconnect().remove();
-    LS.set('cc-room', code);
+    LS.set('cc-room', code); LS.set('cc-in', '1');
     netListen();
   } catch (e) { console.warn(e); $('er').textContent = T('つながりませんでした。もう一度ためしてね'); }
 }
@@ -124,9 +124,21 @@ async function netJoinRound(round) {
     if (!g || !NET.meta || NET.meta.state !== 'play' || NET.meta.round !== round) return;
     const slots = g.slots || [], me = slots.indexOf(NET.uid);
     if (me < 0) { netWaitScreen(); return; }
+    /* 試合の途中で入り直したとき(読み直し・間違えて出た): この試合にはもう戻れないので、待ちの画面へ。
+       まだ CPU にかわっていなければ、自分で CPU にかえる(ホストは「いる人」はかえないため) */
+    const [f, d] = await Promise.all([NET.ref.child('fr/' + round + '/' + me).get(), NET.ref.child('drop/' + round + '/' + me).get()]);
+    if (f.exists() || d.exists()) {
+      if (!d.exists()) await netDropSelf(round, me, f.val());
+      netWaitScreen(); return;
+    }
     netStart(round, g, me);
   } catch (e) { console.warn(e); }
   finally { NET.starting = false; }
+}
+async function netDropSelf(r, q, fr) {
+  const t = (typeof fr === 'number' ? fr : DELAY - 1) + 1;
+  const res = await NET.ref.child('drop/' + r + '/' + q).transaction(v => (v === null ? t : undefined));
+  if (res.committed) await NET.ref.child('cmds/' + r).push({ p: q, t, a: 'x', d: 0, n: 0 });
 }
 function netWaitScreen() {
   if (netScreen === 'wait') return;
@@ -309,9 +321,18 @@ function netCleanup() {
   netUnlisten();
   Object.assign(NET, { ref: null, code: null, meta: null, players: {}, got: {}, round: 0, slots: [], me: -1 });
   netScreen = ''; online = false;
-  LS.set('cc-room', '');
+  LS.set('cc-in', ''); /* 番号(cc-room)は入力欄に残す */
 }
 /* 部屋から出て、部屋に入る画面へ(戻るボタン・✕・「部屋を出る」) */
 async function netLeaveToEntry() { await netLeave(); netHome(); }
 
 home();
+
+/* 読み直したとき: 前に入っていた部屋へ自動で入り直す(自分で出たときは cc-in が消えているので戻らない)。
+   試合中なら、その試合は CPU が続けていて、終わるまで待ちの画面になる */
+(function autoEnter() {
+  const c = LS.get('cc-room');
+  if (LS.get('cc-in') !== '1' || !c || !myName) return;
+  LS.set('cc-in', '');
+  netHome(); netEnter(c);
+})();
