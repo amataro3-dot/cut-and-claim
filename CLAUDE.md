@@ -42,6 +42,7 @@
 - `node tests/sim-test.js 210` … CPU だけで何試合も動かす(止まらない・線の外にいない・同じ種なら同じ結果)
 - `python3 tests/online_test.py .` … にせ Firebase でスマホ3台 + CPU 2体(ずれない・切れても進む・結果が同じ・待ちあいへ)。playwright が必要
   - にせ Firebase(`tests/fakefb.py`)は、聞いている所を全部まとめて同じ時に読む(v=4 で直した)。道ごとに別々に読むと、fr が操作より先に届いて「ずれ」になることがあった(本物は書いた順に届く)
+- `python3 tests/rejoin_test.py .` … 読み直したときの自動の入り直し(待ちあい・試合中・出たあと)
 - テストのときだけ、`window.__ccLimit = コマ数` をホストのページに入れると試合が短くなる
 
 ## 戻るボタンの確認
