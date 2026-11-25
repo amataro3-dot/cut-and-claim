@@ -41,6 +41,10 @@ const I18N = {
   // --- ホーム ---
   "Muddy's Games トップ": ["Muddy's Games home", "Muddy's Games 홈"],
   'プライバシーポリシー': ['Privacy policy', '개인정보 처리방침'],
+  /* 最初の画面の説明(2026-11-25。AdSense 審査のため) */
+  "CUT & CLAIM とは": ["What is CUT & CLAIM?", "CUT & CLAIM이란?"],
+  "四角いフィールドに線を引いて、囲んだ場所を自分の陣地にする陣取りゲームです。人の陣地も、囲めば取り返せます。8人まで同時に遊べて、人が足りないときはCPUを足せます。ひとりで練習もできます。": ["A territory game: draw lines across a square field and claim the areas you enclose. You can even take other players' territory by enclosing it. Up to 8 players at once, and you can add CPUs when you're short of people. Solo practice is available too.", "네모난 필드에 선을 그어 둘러싼 곳을 자기 땅으로 만드는 땅따먹기 게임입니다. 다른 사람의 땅도 둘러싸면 빼앗을 수 있습니다. 최대 8명이 동시에 즐길 수 있고, 사람이 부족하면 CPU를 추가할 수 있습니다. 혼자서 연습할 수도 있습니다."],
+  "📖 遊び方を見る →": ["📖 How to play →", "📖 게임 방법 보기 →"],
   '線で切って、陣地を取れ！': ['Cut the field. Claim your land!', '선을 그어 땅을 차지하라!'],
   '遊び方': ['How to play', '게임 방법'],
   '△は、線の上を自動で進む': ['Your △ runs along the lines by itself', '△는 선 위를 자동으로 달려요'],

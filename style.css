@@ -74,3 +74,6 @@ table.res{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeri
 .res td.nm{text-align:left;display:flex;align-items:center;gap:6px}
 .res tr.me td{color:var(--ac);font-weight:800}
 .intro[hidden]{display:none}
+
+/* 最初の画面の説明(2026-11-25) */
+.about{text-align:left;background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:10px 14px;margin:12px 0 6px}.about h2{font-size:16px;margin:0 0 4px}.about p{margin:4px 0;font-size:14px;line-height:1.7;color:var(--tx);opacity:.9}.about a{color:var(--ac)}

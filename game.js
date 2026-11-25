@@ -47,6 +47,7 @@ function home() {
   </div>
   <button id="solo" class="wide">${T('ひとりで練習(CPU対戦)')}</button>
   ${window.NO_ONLINE ? `<button class="wide sub" disabled>${T('オンライン対戦は muddys-games.com で遊べます')}</button>` : `<button id="online" class="wide">${T('オンライン対戦(8人まで)')}</button>`}
+  <div class="about"><h2>${T("CUT & CLAIM とは")}</h2><p>${T("四角いフィールドに線を引いて、囲んだ場所を自分の陣地にする陣取りゲームです。人の陣地も、囲めば取り返せます。8人まで同時に遊べて、人が足りないときはCPUを足せます。ひとりで練習もできます。")}</p><p><a href="${sitePath('/howto-cut-and-claim.html')}">${T('📖 遊び方を見る →')}</a></p></div>
   ${FOOT()}`;
   langSwitchInit(() => { });
   $('solo').onclick = solo;
